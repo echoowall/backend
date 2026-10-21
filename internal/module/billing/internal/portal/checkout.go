@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -489,7 +490,11 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "Unmarshal error: %s", err.Error())
 	}
 	// Initialize EPay client with merchant credentials
-	client := epay.NewClient(epayConfig.Pid, epayConfig.Url, epayConfig.Key, epayConfig.Type)
+	endpoint, siteRelative, err := epay.ResolveEndpoint(epayConfig.Url, config.Domain)
+	if err != nil {
+		return "", errors.Wrapf(xerr.NewErrCode(xerr.ERROR), "EPay endpoint: %v", err)
+	}
+	client := epay.NewClient(epayConfig.Pid, endpoint, epayConfig.Key, epayConfig.Type)
 	var amount float64
 	if l.deps.Config.CurrencyUnit != "CNY" {
 		// Convert order amount to CNY using current exchange rate
@@ -511,7 +516,7 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 
 	baseURL := l.paymentPublicBaseURL(config)
 	notifyURL := baseURL + "/v1/notify/" + config.Platform + "/" + config.Token
-	return client.CreatePayUrl(epay.Order{
+	payURL, err := client.CreatePayUrl(epay.Order{
 		Name:      l.deps.Config.SiteName,
 		Amount:    amount,
 		OrderNo:   info.OrderNo,
@@ -519,6 +524,14 @@ func (l *PurchaseCheckoutLogic) epayPayment(config *payment.Payment, info *order
 		NotifyUrl: notifyURL,
 		ReturnUrl: returnUrl,
 	})
+	if err != nil || !siteRelative {
+		return payURL, err
+	}
+	parsed, err := url.Parse(payURL)
+	if err != nil {
+		return "", err
+	}
+	return parsed.RequestURI(), nil
 }
 
 // cryptomusPayment processes a Cryptomus crypto payment by creating a hosted

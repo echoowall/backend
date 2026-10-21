@@ -103,6 +103,18 @@ func NewClient(pid, url, key string, Type string) *Client {
 	}
 }
 
+func ResolveEndpoint(raw, domain string) (string, bool, error) {
+	raw = strings.TrimSpace(raw)
+	if !strings.HasPrefix(raw, "/") || strings.HasPrefix(raw, "//") {
+		return raw, false, nil
+	}
+	base := strings.TrimSuffix(strings.TrimSpace(domain), "/")
+	if base == "" {
+		return "", false, errors.New("a site-relative EPay URL requires the payment method domain")
+	}
+	return base + raw, true, nil
+}
+
 // CreatePayUrl builds the browser redirect URL for EPay's submit.php endpoint.
 func (c *Client) CreatePayUrl(order Order) (string, error) {
 	endpoint, err := c.endpoint("submit.php")

@@ -427,7 +427,11 @@ func (s *Service) settleEPayOrder(ctx context.Context, orderInfo *order.Order, u
 	if err := json.Unmarshal([]byte(paymentConfig.Config), &config); err != nil {
 		return false, err
 	}
-	result, err := epay.NewClient(config.Pid, config.Url, config.Key, config.Type).QueryOrder(orderInfo.OrderNo)
+	endpoint, _, err := epay.ResolveEndpoint(config.Url, paymentConfig.Domain)
+	if err != nil {
+		return false, err
+	}
+	result, err := epay.NewClient(config.Pid, endpoint, config.Key, config.Type).QueryOrder(orderInfo.OrderNo)
 	if err != nil {
 		if userInitiated {
 			logger.WithContext(ctx).Infow("[CloseOrder] user-requested close of EPay order without gateway confirmation",

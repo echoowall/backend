@@ -123,9 +123,13 @@ func epayCredentialsForPayment(data *payment.Payment) (epayCredentials, error) {
 		if err := json.Unmarshal([]byte(data.Config), &config); err != nil {
 			return result, err
 		}
+		endpoint, _, err := epay.ResolveEndpoint(config.Url, data.Domain)
+		if err != nil {
+			return result, err
+		}
 		result = epayCredentials{
 			merchantID:  config.Pid,
-			endpoint:    config.Url,
+			endpoint:    endpoint,
 			key:         config.Key,
 			paymentType: config.Type,
 		}
