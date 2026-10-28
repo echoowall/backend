@@ -79,7 +79,7 @@ func NewClient(config Config) (*Client, error) {
 	// Never forward signed payment data through a redirect; do not mutate the caller's client.
 	httpClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 	return &Client{
-		baseURL: u.Scheme + "://" + u.Host + strings.TrimSuffix(u.Path, "/"), merchantID: config.MerchantID,
+		baseURL: u.Scheme + "://" + u.Host + strings.TrimSuffix(u.EscapedPath(), "/"), merchantID: config.MerchantID,
 		privateKey: privateKey, publicKey: publicKey, http: &httpClient,
 		clockSkew: skew, now: time.Now,
 	}, nil
@@ -211,9 +211,16 @@ func (c *Client) verify(params Params) error {
 }
 
 func validBasePath(u *url.URL) bool {
+	// RawPath is only an optional hint: canonical escapes such as %23 and
+	// %3F can leave it empty even though Path contains decoded delimiters.
+	// Check before trimming so a root path of // cannot collapse to / and
+	// later produce a browser URL interpreted as a different authority.
+	if u.RawPath != "" || u.EscapedPath() != u.Path || strings.Contains(u.Path, "//") {
+		return false
+	}
 	p := strings.TrimSuffix(u.Path, "/")
 	if p == "" {
 		return true
 	}
-	return u.RawPath == "" && strings.HasPrefix(p, "/") && path.Clean(p) == p && !strings.ContainsAny(p, "%\\")
+	return strings.HasPrefix(p, "/") && path.Clean(p) == p && !strings.ContainsAny(p, "%\\")
 }

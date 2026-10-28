@@ -287,6 +287,8 @@ func TestClientAcceptsDeploymentPath(t *testing.T) {
 		PlatformPublicKey:  []byte(base64.StdEncoding.EncodeToString(x509.MarshalPKCS1PublicKey(&fixtureKeys.platform.PublicKey))),
 	}
 	for base, want := range map[string]string{
+		"https://pay.example.com":         "https://pay.example.com/api/pay/query",
+		"https://pay.example.com/":        "https://pay.example.com/api/pay/query",
 		"https://pay.example.com/pay":     "https://pay.example.com/pay/api/pay/query",
 		"https://pay.example.com/pay/":    "https://pay.example.com/pay/api/pay/query",
 		"https://pay.example.com/a/b/pay": "https://pay.example.com/a/b/pay/api/pay/query",
@@ -304,10 +306,14 @@ func TestClientAcceptsDeploymentPath(t *testing.T) {
 		"http://pay.example.com/pay", "https://pay.example.com/pay?x=1", "https://pay.example.com/pay#f",
 		"https://user@pay.example.com/pay", "https://pay.example.com/a/../pay", "https://pay.example.com/a//pay",
 		"https://pay.example.com/p%2Fay", "https://pay.example.com/./pay",
+		"https://pay.example.com/pay%23checkout", "https://pay.example.com/pay%3Froute=wrong",
+		"https://pay.example.com/pay%20space", "https://pay.example.com/pay%09tab",
+		"https://pay.example.com/pay%0Aline", "https://pay.example.com/pay%0Dline",
+		"https://pay.example.com//", "https://pay.example.com///", "https://pay.example.com/pay//",
 	} {
 		config.BaseURL = base
 		if _, err := NewClient(config); err == nil {
-			t.Fatalf("invalid base URL accepted: %q", base)
+			t.Errorf("invalid base URL accepted: %q", base)
 		}
 	}
 }
