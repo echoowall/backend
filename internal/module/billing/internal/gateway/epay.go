@@ -39,7 +39,7 @@ func openEPay(r *Registry, method *paymentEntity.Payment) (Gateway, error) {
 	config.CheckoutMode = strings.ToLower(strings.TrimSpace(config.CheckoutMode))
 	config.Url = strings.TrimSpace(config.Url)
 	var siteRelative, schemeRelative bool
-	if (config.Version == "" || config.Version == "v1") && (config.CheckoutMode == "" || config.CheckoutMode == "page") {
+	if config.Version == "v2" || (config.Version == "" || config.Version == "v1") && (config.CheckoutMode == "" || config.CheckoutMode == "page") {
 		schemeRelative = strings.HasPrefix(config.Url, "//")
 		endpoint, relative, err := epayEndpoint(config.Url, method.Domain)
 		if err != nil {
@@ -77,11 +77,20 @@ func normalizeEPay(raw []byte) (string, error) {
 	if err := config.Unmarshal(raw); err != nil {
 		return "", err
 	}
+	configured := strings.TrimSpace(config.Url)
+	if strings.EqualFold(strings.TrimSpace(config.Version), "v2") && strings.HasPrefix(configured, "/") {
+		resolved, _, err := epayEndpoint(configured, "https://relative.invalid")
+		if err != nil {
+			return "", err
+		}
+		config.Url = resolved
+	}
 	validated, err := newEPayGateway(config, nil)
 	if err != nil {
 		return "", err
 	}
 	config = validated.config
+	config.Url = configured
 	content, err := config.Marshal()
 	return string(content), err
 }
@@ -105,7 +114,7 @@ func (g *epayGateway) StartPayment(ctx context.Context, c Checkout) (*dto.Checko
 		if err != nil {
 			return nil, err
 		}
-		return &dto.CheckoutOrderResponse{Type: "url", CheckoutUrl: form.URL()}, nil
+		return &dto.CheckoutOrderResponse{Type: "url", CheckoutUrl: g.browserURL(form.URL())}, nil
 	}
 	payURL, err := g.client.CreatePayUrl(epay.Order{
 		Name:      c.Subject,
@@ -118,16 +127,18 @@ func (g *epayGateway) StartPayment(ctx context.Context, c Checkout) (*dto.Checko
 	if err != nil {
 		return nil, err
 	}
+	return &dto.CheckoutOrderResponse{Type: "url", CheckoutUrl: g.browserURL(payURL)}, nil
+}
+
+func (g *epayGateway) browserURL(payURL string) string {
 	if g.siteRelative {
-		parsed, err := url.Parse(payURL)
-		if err != nil {
-			return nil, err
+		if parsed, err := url.Parse(payURL); err == nil {
+			return parsed.RequestURI()
 		}
-		payURL = parsed.RequestURI()
 	} else if g.schemeRelative {
-		payURL = strings.TrimPrefix(payURL, "https:")
+		return strings.TrimPrefix(payURL, "https:")
 	}
-	return &dto.CheckoutOrderResponse{Type: "url", CheckoutUrl: payURL}, nil
+	return payURL
 }
 
 // Reconcile queries the order at the gateway. Legacy V1-compatible gateways have

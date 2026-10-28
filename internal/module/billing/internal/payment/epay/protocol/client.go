@@ -23,7 +23,7 @@ const maxResponseBytes = 2 << 20
 
 // Config configures the EPay V2 RSA client. Use V1Config for shared-key V1.
 type Config struct {
-	BaseURL            string // Required HTTPS origin of the target EPay deployment.
+	BaseURL            string // Required HTTPS origin of the target EPay deployment, optionally with a deployment path.
 	MerchantID         string
 	MerchantPrivateKey []byte // Unencrypted PEM or bare Base64 DER.
 	PlatformPublicKey  []byte // PEM or bare Base64 DER; never the merchant public key.
@@ -51,8 +51,8 @@ func NewClient(config Config) (*Client, error) {
 		return nil, errors.New("epay: BaseURL is required; configure your EPay provider's HTTPS origin")
 	}
 	u, err := url.Parse(base)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return nil, errors.New("epay: BaseURL must be an HTTPS origin without credentials, path, query or fragment")
+	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || !validBasePath(u) {
+		return nil, errors.New("epay: BaseURL must be an HTTPS origin or deployment path without credentials, query or fragment")
 	}
 	privateKey, err := parsePrivateKey(config.MerchantPrivateKey)
 	if err != nil {
@@ -79,7 +79,7 @@ func NewClient(config Config) (*Client, error) {
 	// Never forward signed payment data through a redirect; do not mutate the caller's client.
 	httpClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 	return &Client{
-		baseURL: strings.TrimSuffix(base, "/"), merchantID: config.MerchantID,
+		baseURL: u.Scheme + "://" + u.Host + strings.TrimSuffix(u.Path, "/"), merchantID: config.MerchantID,
 		privateKey: privateKey, publicKey: publicKey, http: &httpClient,
 		clockSkew: skew, now: time.Now,
 	}, nil
@@ -208,4 +208,12 @@ func (c *Client) verify(params Params) error {
 		return errors.New("epay: merchant ID mismatch")
 	}
 	return nil
+}
+
+func validBasePath(u *url.URL) bool {
+	p := strings.TrimSuffix(u.Path, "/")
+	if p == "" {
+		return true
+	}
+	return u.RawPath == "" && strings.HasPrefix(p, "/") && path.Clean(p) == p && !strings.ContainsAny(p, "%\\")
 }
